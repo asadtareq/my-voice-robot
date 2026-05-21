@@ -13,6 +13,7 @@ qa_database = {
     "তোমার নাম কি": "আমার নাম কথা বলা রোবট।",
     "কেমন আছো": "আমি খুব ভালো আছি, ধন্যবাদ! আপনি কেমন আছেন?",
     "দিনাজপুর কি": "দিনাজপুর বাংলাদেশের একটি বিখ্যাত জেলা। দিনাজপুর লিচু ও কাটারিভোগ চালের জন্য বিখ্যাত।",
+    "তুমি কি করতে পারো": "আমি আপনার কথা শুনে সরাসরি মুখে উত্তর দিতে পারি।",
     "ধন্যবাদ": "আপনাকেও অনেক অনেক ধন্যবাদ!",
     "hello": "Hello! How can I help you?",
     "what is your name": "My name is Talking Robot.",
@@ -22,8 +23,14 @@ qa_database = {
 # জাভাস্ক্রিপ্টের জন্য ডাটাবেজটিকে রেডি করা
 qa_json = json.dumps(qa_database, ensure_ascii=False)
 
-# মূল ইন্টারফেস এবং সচল লুপ কোড (কোনো base64 এনকোডিং ছাড়া সরাসরি ফিক্সড কোড)
-robot_html_code = """
+# ২০২৬ সালের নতুন নিয়মে সম্পূর্ণ এরর-মুক্ত রিলিজ কোড
+robot_html_code = r"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="margin:0; padding:0; background: transparent;">
 <div style="font-family: Arial, sans-serif; text-align: center; padding: 25px; background: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f5; max-width: 450px; margin: auto;">
     <div id="status-display" style="font-size: 18px; color: #2c3e50; margin-bottom: 20px; font-weight: bold; padding: 15px; background: #f8f9fa; border-radius: 10px; border-left: 5px solid #3498db; transition: all 0.3s;">
         🤖 রোবট বর্তমানে বন্ধ আছে
@@ -118,7 +125,8 @@ robot_html_code = """
     }
 
     function matchQuestionAndReply(question) {
-        let cleanQ = question.replace(/[?.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+        // সিনট্যাক্স এরর দূর করতে পাইথন র-স্ট্রিং ও সেফ রিপ্লেস মেথড ব্যবহার করা হলো
+        let cleanQ = question.replace(/[?.,#!$%\^&*;:{}=\-_`~()]/g,"").trim();
         let targetReply = "দুঃখিত, এই প্রশ্নের উত্তর আমার কোডে সেট করা নেই।";
 
         for (let key in robotQAData) {
@@ -165,7 +173,14 @@ robot_html_code = """
         window.speechSynthesis.speak(speechUtterance);
     }
 </script>
+</body>
+</html>
 """
 
-# সরাসরি অফিশিয়াল কম্পোনেন্ট দিয়ে কোনো প্রকার এনকোডিং ছাড়া রেন্ডার করা হলো
-st.components.v1.html(robot_html_code, height=390, scrolling=False)
+# ২০২৬ সালের আপডেট অনুযায়ী st.iframe ব্যবহার করে মাইক্রোফোন বাইপাস করা হলো
+import base64
+b64_html = base64.b64encode(robot_html_code.encode('utf-8')).decode('utf-8')
+src_data = f"data:text/html;base64,{b64_html}"
+
+# এটি একদম লেটেস্ট Streamlit স্ট্যান্ডার্ড নিয়ম
+st.iframe(src=src_data, height=400, scrolling=False)
