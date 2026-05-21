@@ -23,14 +23,8 @@ qa_database = {
 # জাভাস্ক্রিপ্টের জন্য ডাটাবেজটিকে রেডি করা
 qa_json = json.dumps(qa_database, ensure_ascii=False)
 
-# ২০২৬ সালের নতুন নিয়মে সম্পূর্ণ এরর-মুক্ত রিলিজ কোড
-robot_html_code = r"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-</head>
-<body style="margin:0; padding:0; background: transparent;">
+# মূল ইন্টারফেস এবং সচল লুপ কোড (আইফ্রেম সিকিউরিটি পলিসি বাইপাস করার জন্য সরাসরি ব্রাউজার লেভেলে ট্রিকস)
+robot_ui_html = """
 <div style="font-family: Arial, sans-serif; text-align: center; padding: 25px; background: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f5; max-width: 450px; margin: auto;">
     <div id="status-display" style="font-size: 18px; color: #2c3e50; margin-bottom: 20px; font-weight: bold; padding: 15px; background: #f8f9fa; border-radius: 10px; border-left: 5px solid #3498db; transition: all 0.3s;">
         🤖 রোবট বর্তমানে বন্ধ আছে
@@ -125,7 +119,6 @@ robot_html_code = r"""
     }
 
     function matchQuestionAndReply(question) {
-        // সিনট্যাক্স এরর দূর করতে পাইথন র-স্ট্রিং ও সেফ রিপ্লেস মেথড ব্যবহার করা হলো
         let cleanQ = question.replace(/[?.,#!$%\^&*;:{}=\-_`~()]/g,"").trim();
         let targetReply = "দুঃখিত, এই প্রশ্নের উত্তর আমার কোডে সেট করা নেই।";
 
@@ -161,11 +154,13 @@ robot_html_code = r"""
         speechUtterance.rate = 1.0;
 
         speechUtterance.onend = function() {
+            isRobotSpeakingNow = false;
             isRobotTalking = false;
             setTimeout(() => { triggerContinuousListen(); }, 600); 
         };
 
         speechUtterance.onerror = function() {
+            isRobotSpeakingNow = false;
             isRobotTalking = false;
             triggerContinuousListen();
         };
@@ -173,14 +168,7 @@ robot_html_code = r"""
         window.speechSynthesis.speak(speechUtterance);
     }
 </script>
-</body>
-</html>
 """
 
-# ২০২৬ সালের আপডেট অনুযায়ী st.iframe ব্যবহার করে মাইক্রোফোন বাইপাস করা হলো
-import base64
-b64_html = base64.b64encode(robot_html_code.encode('utf-8')).decode('utf-8')
-src_data = f"data:text/html;base64,{b64_html}"
-
-# এটি একদম লেটেস্ট Streamlit স্ট্যান্ডার্ড নিয়ম
-st.iframe(src=src_data, height=400, scrolling=False)
+# আইফ্রেমকে লাথি মেরে সরাসরি মূল ডোমেইনে এইচটিএমএল ইনজেক্ট করার লেটেস্ট মেথড
+st.html(robot_ui_html)
