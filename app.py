@@ -6,21 +6,22 @@ import json
 st.set_page_config(page_title="স্মার্ট ডাইনামিক রোবট", page_icon="🤖", layout="centered")
 
 st.markdown("<h2 style='text-align: center;'>🤖 ডাইনামিক ভয়েস টু ভয়েস রোবট</h2>", unsafe_allow_html=True)
-st.write("<p style='text-align: center; color: gray;'>কোডে হাত না দিয়ে গুগল শিট থেকে প্রশ্ন-উত্তর আপডেট করুন।</p>", unsafe_allow_html=True)
+st.write("<p style='text-align: center; color: gray;'>কোডে হাত না দিয়ে গুগল শিট থেকে প্রশ্ন-উত্তর আপডেট করুন</p>", unsafe_allow_html=True)
 st.write("---")
 
-# সরাসরি গুগল শিটের পাবলিক এক্সপোর্ট লিঙ্ক (অনলাইন রিডিং নিশ্চিত করতে)
+# সরাসরি গুগল শিটের পাবলিক এক্সপোর্ট লিঙ্ক
 CSV_URL = "https://google.com"
 
 # গুগল শিট থেকে ডাটা রিড করা এবং জাভা-স্ক্রিপ্টের জন্য ফরম্যাট করা
 try:
-    # এনকোডিং এবং এরর হ্যান্ডেলিং উন্নত করা হলো
     df = pd.read_csv(CSV_URL, on_bad_lines='skip')
-    df.columns = df.columns.str.strip().str.lower()
     
-    # প্রশ্ন ও উত্তর ক্লিনিং
-    questions = df['question'].astype(str).str.lower().str.strip()
-    answers = df['answer'].astype(str).str.strip()
+    # কলামের সব নামকে ট্রিম এবং ছোট হাতের অক্ষরে রূপান্তর (যেমন: Question -> question)
+    df.columns = df.columns.astype(str).str.strip().str.lower()
+    
+    # কলামের নাম সরাসরি ইনডেক্স দিয়ে ধরা (১ম কলাম প্রশ্ন, ২য় কলাম উত্তর) যাতে নাম ভুল হলেও ক্র্যাশ না করে
+    questions = df.iloc[:, 0].astype(str).str.lower().str.strip()
+    answers = df.iloc[:, 1].astype(str).str.strip()
     
     qa_dict = dict(zip(questions, answers))
     qa_json = json.dumps(qa_dict, ensure_ascii=False)
