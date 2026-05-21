@@ -1,13 +1,10 @@
 import streamlit as st
-import speech_recognition as sr
-from gtts import gTTS
-import io
-import base64
-import time
+import json
 
 st.set_page_config(page_title="নন-স্টপ ভয়েস রোবট", page_icon="🤖", layout="centered")
 
-st.markdown("<h2 style='text-align: center;'>🤖 শতভাগ সচল ভয়েস রোবট</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center;'>🤖 নন-স্টপ ভয়েস টু ভয়েস রোবট</h2>", unsafe_allow_html=True)
+st.write("<p style='text-align: center; color: gray;'>একবার অন করে হাত সরিয়ে নিন। রোবট অনবরত কথা শুনবে ও উত্তর দেবে।</p>", unsafe_allow_html=True)
 st.write("---")
 
 # কোডের ভেতরের ডাটাবেজ (এখানে আপনি প্রশ্ন-উত্তর পরিবর্তন করতে পারবেন)
@@ -22,61 +19,163 @@ qa_database = {
     "how are you": "I am doing great, thank you!"
 }
 
-# ফোর্সড অডিও প্লেয়ার ফাংশন (যা ক্লাউড সিকিউরিটি বাইপাস করবে)
-def force_speak(text):
-    lang = 'en' if (any(c.isalpha() for c in text) and not any(0x0980 <= ord(c) <= 0x09FF for c in text)) else 'bn'
-    tts = gTTS(text=text, lang=lang, slow=False)
+# জাভাস্ক্রিপ্টের জন্য ডাটাবেজটিকে রেডি করা
+qa_json = json.dumps(qa_database, ensure_ascii=False)
+
+# মূল ইন্টারফেস এবং সিকিউরিটি-বাইপাস লুপ কোড
+robot_html_code = """
+<div style="font-family: Arial, sans-serif; text-align: center; padding: 25px; background: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f5; max-width: 450px; margin: 20px auto;">
+    <div id="status-display" style="font-size: 18px; color: #2c3e50; margin-bottom: 20px; font-weight: bold; padding: 15px; background: #f8f9fa; border-radius: 10px; border-left: 5px solid #3498db; transition: all 0.3s;">
+        🤖 রোবট বর্তমানে বন্ধ আছে
+    </div>
+    <button id="main-action-btn" onclick="startRobotSystem()" style="background-color: #2ecc71; color: white; padding: 15px 40px; font-size: 18px; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3); transition: all 0.3s ease;">
+        রোবট চালু করুন
+    </button>
     
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    audio_bytes = fp.read()
+    <div id="chat-history-box" style="margin-top: 25px; text-align: left; background: #f1f2f6; padding: 15px; border-radius: 12px; height: 160px; overflow-y: auto; font-size: 15px; border: 1px solid #e4e7eb;">
+        <p style="color: #7f8c8d; margin: 0;"><strong>রোবট:</strong> কথা বলা শুরু করতে উপরের সবুজ বাটনে একবার চাপুন।</p>
+    </div>
+</div>
+
+<script>
+    const robotQAData = """ + qa_json + """;
+
+    let speechEngine = null;
+    let isSystemRunning = false;
+    let isRobotTalking = false;
     
-    # অডিও ফাইলটিকে বেস-৬৪ এ রূপান্তর করে ব্রাউজারের স্পিকারে পুশ করা
-    audio_base64 = base64.b64encode(audio_bytes).decode()
-    audio_html = f'<audio src="data:audio/mp3;base64,{audio_base64}" autoplay>'
-    st.markdown(audio_html, unsafe_allow_html=True)
+    const actionBtn = document.getElementById('main-action-btn');
+    const statusDisplay = document.getElementById('status-display');
+    const chatHistoryBox = document.getElementById('chat-history-box');
 
-# সেশন স্টেট (অটোমেটিক লুপ চালু রাখার জন্য)
-if 'listening' not in st.session_state:
-    st.session_state.listening = True
+    // ব্রাউজারের ভয়েস সার্ভিস চেক
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        speechEngine = new SpeechRecognition();
+        speechEngine.continuous = false; 
+        speechEngine.interimResults = false;
+        speechEngine.lang = 'bn-BD'; 
 
-st.subheader("🎤 মাইক্রোফোনে কথা বলুন")
+        // মাইক অন হলে যা দেখাবে
+        speechEngine.onstart = function() {
+            if (isSystemRunning && !isRobotTalking) {
+                statusDisplay.style.borderLeft = "5px solid #e74c3c";
+                statusDisplay.style.color = "#e74c3c";
+                statusDisplay.style.backgroundColor = "#fdf2f2";
+                statusDisplay.innerText = "🎤 আমি শুনছি... আপনার প্রশ্নটি বলুন...";
+            }
+        };
 
-# Streamlit-এর নিজস্ব অফিশিয়াল ইনপুট (যা ব্রাউজার কখনো ব্লক করে না)
-audio_file = st.audio_input("কথা বলতে নিচের কালো মাইক আইকনে চাপুন", key="my_mic")
+        // কথা শোনার পর প্রসেস করা
+        speechEngine.onresult = function(event) {
+            let capturedText = event.results[0][0].transcript.toLowerCase().trim();
+            if (capturedText.length > 0) {
+                printChatLog('আপনি', capturedText);
+                matchQuestionAndReply(capturedText);
+            }
+        };
 
-if audio_file is not None and st.session_state.listening:
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(audio_file) as source:
-        audio_data = recognizer.record(source)
-    
-    user_text = ""
-    try:
-        # প্রথমে বাংলা হিসেবে চেক করবে
-        user_text = recognizer.recognize_google(audio_data, language="bn-BD").lower().strip()
-    except:
-        try:
-            # বাংলা না বুঝলে ইংরেজি চেক করবে
-            user_text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
-        except:
-            st.error("কথাটি স্পষ্ট নয়। আবার চেষ্টা করুন।")
-            
-    if user_text:
-        st.success(f"**আপনি বলেছেন:** {user_text}")
+        // কথা বলা শেষ হলে বা কোনো সাউন্ড না পেলে বাটন ছাড়াই অটোমেটিক লুপ রিস্টার্ট হবে
+        speechEngine.onerror = function() { triggerContinuousListen(); };
+        speechEngine.onend = function() { triggerContinuousListen(); };
+    } else {
+        statusDisplay.innerText = "🚨 আপনার ব্রাউজারটি ভয়েস সাপোর্ট করে না। গুগল ক্রোম ব্যবহার করুন।";
+    }
+
+    function startRobotSystem() {
+        if (!isSystemRunning) {
+            isSystemRunning = true;
+            isRobotTalking = false;
+            actionBtn.innerText = "রোবট বন্ধ করুন";
+            actionBtn.style.backgroundColor = "#e74c3c";
+            actionBtn.style.boxShadow = "0 5px 15px rgba(231, 76, 60, 0.3)";
+            executeListening();
+        } else {
+            isSystemRunning = false;
+            isRobotTalking = false;
+            actionBtn.innerText = "রোবট চালু করুন";
+            actionBtn.style.backgroundColor = "#2ecc71";
+            actionBtn.style.boxShadow = "0 5px 15px rgba(46, 204, 113, 0.3)";
+            statusDisplay.style.borderLeft = "5px solid #3498db";
+            statusDisplay.style.color = "#2c3e50";
+            statusDisplay.style.backgroundColor = "#f8f9fa";
+            statusDisplay.innerText = "🤖 রোবট বর্তমানে বন্ধ আছে";
+            if(speechEngine) speechEngine.abort();
+            window.speechSynthesis.cancel();
+        }
+    }
+
+    function executeListening() {
+        if (!isSystemRunning || isRobotTalking) return;
+        try { speechEngine.start(); } catch (e) {}
+    }
+
+    function triggerContinuousListen() {
+        if (isSystemRunning && !isRobotTalking && !window.speechSynthesis.speaking) {
+            setTimeout(() => { executeListening(); }, 400); // ৪০০ মিলি-সেকেন্ড পর স্বয়ংক্রিয় রিস্টার্ট লুপ
+        }
+    }
+
+    function printChatLog(sender, text) {
+        chatHistoryBox.innerHTML += `<p style='margin: 5px 0;'><strong>` + sender + `:</strong> ` + text + `</p>`;
+        chatHistoryBox.scrollTop = chatHistoryBox.scrollHeight;
+    }
+
+    function matchQuestionAndReply(question) {
+        let cleanQ = question.replace(/[?.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+        let targetReply = "দুঃখিত, এই প্রশ্নের উত্তর আমার কোডে সেট করা নেই।";
+
+        for (let key in robotQAData) {
+            let cleanKey = key.trim();
+            if (cleanQ.includes(cleanKey) || cleanKey.includes(cleanQ)) {
+                targetReply = robotQAData[cleanKey];
+                break;
+            }
+        }
+
+        printChatLog('রোবট', targetReply);
+        generateVoiceAudio(targetReply);
+    }
+
+    function generateVoiceAudio(text) {
+        isRobotTalking = true;
+        if (speechEngine) speechEngine.abort(); // রোবট কথা বলার সময় মাইক শতভাগ অফ থাকবে
         
-        # ডাটা ম্যাচিং
-        answer = "দুঃখিত, এই প্রশ্নের উত্তর আমার কোডে সেট করা নেই।"
-        for key in qa_database:
-            if key in user_text or user_text in key:
-                answer = qa_database[key]
-                break
-                
-        st.warning(f"**রোবট:** {answer}")
+        statusDisplay.style.borderLeft = "5px solid #2ecc71";
+        statusDisplay.style.color = "#2ecc71";
+        statusDisplay.style.backgroundColor = "#f2fdf5";
+        statusDisplay.innerText = "📢 রোবট মুখে উত্তর দিচ্ছে...";
+
+        const speechUtterance = new SpeechSynthesisUtterance(text);
         
-        # স্পিকারে আওয়াজ দেওয়া
-        force_speak(answer)
+        // ভাষা ফিল্টারিং (ইংরেজি এবং খাঁটি বাংলাদেশি বাংলা উচ্চারণ নিশ্চিতকরণ)
+        if(/[a-zA-Z]/.test(text)) {
+            speechUtterance.lang = 'en-US';
+        } else {
+            speechUtterance.lang = 'bn-BD';
+        }
         
-        # ২ সেকেন্ড অপেক্ষা করে স্বয়ংক্রিয়ভাবে আবার মাইক রেডি করা (অটো-লুপ)
-        time.sleep(2.0)
-        st.rerun()
+        speechUtterance.rate = 1.0; // কথার স্বাভাবিক গতি
+
+        // কথা বলা শেষ হওয়ামাত্রই কোনো বাটন ছাড়াই মাইক আবার চালু হবে
+        speechUtterance.onend = function() {
+            isRobotTalking = false;
+            setTimeout(() => { triggerContinuousListen(); }, 600); 
+        };
+
+        speechUtterance.onerror = function() {
+            isRobotTalking = false;
+            triggerContinuousListen();
+        };
+
+        window.speechSynthesis.speak(speechUtterance);
+    }
+</script>
+"""
+
+# আইফ্রেমের সিকিউরিটি পলিসি বাইপাস করে সরাসরি রেন্ডার করার ট্রিকস
+import base64
+b64_html = base64.b64encode(robot_html_code.encode('utf-8')).decode('utf-8')
+iframe_wrapper = f'<iframe src="data:text/html;base64,{b64_html}" height="390" width="100%" style="border:none;" allow="microphone; autoplay"></iframe>'
+
+st.markdown(iframe_wrapper, unsafe_allow_html=True)
