@@ -39,15 +39,16 @@ def speak_out(text):
 st.subheader("🎤 রোবটের সাথে কথা বলুন")
 st.info("নিচের বাটনে ক্লিক করে কথা বলা শুরু করুন এবং কথা শেষ হলে আবার চাপুন।")
 
-# মাইক্রোফোন রেকর্ডার উইজেট
+# মাইক্রোফোন রেকর্ডার উইজেট (এখানে format='wav' এবং sample_rate নিশ্চিত করা হয়েছে)
 audio = mic_recorder(
     start_prompt="🔴 রেকর্ড শুরু করুন",
     stop_prompt="🟢 রেকর্ড শেষ করুন",
+    format="wav",  # এই লাইনটি এরর দূর করবে
     key='recorder'
 )
 
 if audio:
-    # রেকর্ড করা অডিও ডেটা প্রসেস করা
+    # রেকর্ড করা WAV অডিও ডেটা প্রসেস করা
     audio_bio = io.BytesIO(audio['bytes'])
     recognizer = sr.Recognizer()
     
@@ -76,6 +77,6 @@ if audio:
         speak_out(answer)
         
     except sr.UnknownValueError:
-        st.error("দুঃখিত, আপনার কথাটি স্পষ্ট বোঝা যায়নি। আবার চেষ্টা করুন।")
+        st.error("দুঃখিত, আপনার কথাটি স্পষ্ট বোঝা যায়নি। অনুগ্রহ করে মাইক্রোফোনের কাছে এসে আবার স্পষ্ট করে চেষ্টা করুন।")
     except sr.RequestError:
         st.error("সার্ভার সমস্যা। অনুগ্রহ করে ইন্টারনেট কানেকশন চেক করুন।")
