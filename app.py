@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import json
 
@@ -16,10 +15,10 @@ CSV_URL = "https://google.com"
 try:
     df = pd.read_csv(CSV_URL, on_bad_lines='skip')
     
-    # কলামের সব নামকে ট্রিম এবং ছোট হাতের অক্ষরে রূপান্তর (যেমন: Question -> question)
+    # কলামের সব নামকে ট্রিম এবং ছোট হাতের অক্ষরে রূপান্তর
     df.columns = df.columns.astype(str).str.strip().str.lower()
     
-    # কলামের নাম সরাসরি ইনডেক্স দিয়ে ধরা (১ম কলাম প্রশ্ন, ২য় কলাম উত্তর) যাতে নাম ভুল হলেও ক্র্যাশ না করে
+    # কলামের নাম সরাসরি ইনডেক্স দিয়ে ধরা
     questions = df.iloc[:, 0].astype(str).str.lower().str.strip()
     answers = df.iloc[:, 1].astype(str).str.strip()
     
@@ -29,17 +28,65 @@ except Exception as e:
     st.error(f"গুগল শিট থেকে ডাটা লোড করা যাচ্ছে না! সমস্যা: {e}")
     qa_json = "{}"
 
-# কাস্টম এইচটিএমএল ও জাভাস্ক্রিপ্ট কোড
-custom_robot_html = """
-<div style="font-family: Arial, sans-serif; text-align: center; padding: 20px; background: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f5; max-width: 450px; margin: auto;">
-    <div id="status-box" style="font-size: 18px; color: #2c3e50; margin: 20px 0; font-weight: bold; padding: 12px; background: #f8f9fa; border-radius: 10px; border-left: 5px solid #3498db;">
-        🤖 রোবট বর্তমানে বন্ধ আছে
-    </div>
-    <button id="action-btn" onclick="toggleRobotSystem()" style="background-color: #2ecc71; color: white; padding: 15px 40px; font-size: 18px; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3); transition: all 0.3s ease;">
-        রোবট চালু করুন
-    </button>
-    
-    <div id="display-box" style="margin-top: 25px; text-align: left; background: #f1f2f6; padding: 15px; border-radius: 12px; height: 160px; overflow-y: auto; font-size: 15px; border: 1px solid #e4e7eb;">
+# মূল এইচটিএমএল, সিএসএস ও জাভাস্ক্রিপ্ট কোড
+robot_ui_code = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        .robot-card {
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            padding: 20px; 
+            background: #ffffff; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
+            border: 1px solid #eef2f5; 
+            max-width: 420px; 
+            margin: auto;
+        }
+        .status-box {
+            font-size: 17px; 
+            color: #2c3e50; 
+            margin: 20px 0; 
+            font-weight: bold; 
+            padding: 12px; 
+            background: #f8f9fa; 
+            border-radius: 10px; 
+            border-left: 5px solid #3498db;
+        }
+        .action-btn {
+            background-color: #2ecc71; 
+            color: white; 
+            padding: 15px 40px; 
+            font-size: 18px; 
+            border: none; 
+            border-radius: 50px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3); 
+            transition: all 0.3s ease;
+        }
+        .chat-display {
+            margin-top: 25px; 
+            text-align: left; 
+            background: #f1f2f6; 
+            padding: 15px; 
+            border-radius: 12px; 
+            height: 150px; 
+            overflow-y: auto; 
+            font-size: 15px; 
+            border: 1px solid #e4e7eb;
+        }
+    </style>
+</head>
+<body>
+
+<div class="robot-card">
+    <div id="status-box" class="status-box">🤖 রোবট বর্তমানে বন্ধ আছে</div>
+    <button id="action-btn" class="action-btn" onclick="toggleRobotSystem()">রোবট চালু করুন</button>
+    <div id="display-box" class="chat-display">
         <p style="color: #7f8c8d; margin: 0;"><strong>রোবট:</strong> কথা বলা শুরু করতে উপরের সবুজ বাটনে একবার চাপুন।</p>
     </div>
 </div>
@@ -168,6 +215,14 @@ custom_robot_html = """
         window.speechSynthesis.speak(speechUtterance);
     }
 </script>
+</body>
+</html>
 """
-components.html(custom_robot_html, height=350, scrolling=False, allow_output_interaction=True)
 
+# ডাটা ইউআরআই (Data URI) মেকানিজম ব্যবহার করে মাইক্রোফোন পারমিশন বাইপাস করা হলো
+import base64
+b64_code = base64.b64encode(robot_ui_code.encode('utf-8')).decode('utf-8')
+iframe_html = f'<iframe src="data:text/html;base64,{b64_code}" height="350" width="100%" style="border:none;" allow="microphone"></iframe>'
+
+# স্ক্রিনে রেন্ডার করা
+st.markdown(iframe_html, unsafe_allow_html=True)
