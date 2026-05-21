@@ -4,10 +4,10 @@ import json
 st.set_page_config(page_title="নন-স্টপ ভয়েস রোবট", page_icon="🤖", layout="centered")
 
 st.markdown("<h2 style='text-align: center;'>🤖 নন-স্টপ ভয়েস টু ভয়েস রোবট</h2>", unsafe_allow_html=True)
-st.write("<p style='text-align: center; color: gray;'>একবার অন করে হাত সরিয়ে নিন। রোবট অনবরত কথা শুনবে ও উত্তর দেবে।</p>", unsafe_allow_html=True)
+st.write("<p style='text-align: center; color: gray;'>প্রশ্ন-উত্তর কোডের ভেতরেই সেট করা আছে। একবার অন করে কথা বলতে থাকুন।</p>", unsafe_allow_html=True)
 st.write("---")
 
-# কোডের ভেতরের ডাটাবেজ (এখানে আপনি প্রশ্ন-উত্তর পরিবর্তন করতে পারবেন)
+# আপনার প্রশ্ন ও উত্তর ডাটাবেজ
 qa_database = {
     "হ্যালো": "হ্যালো! আমি আপনাকে কীভাবে সাহায্য করতে পারি?",
     "তোমার নাম কি": "আমার নাম কথা বলা রোবট।",
@@ -22,9 +22,9 @@ qa_database = {
 # জাভাস্ক্রিপ্টের জন্য ডাটাবেজটিকে রেডি করা
 qa_json = json.dumps(qa_database, ensure_ascii=False)
 
-# মূল ইন্টারফেস এবং সিকিউরিটি-বাইপাস লুপ কোড
+# মূল ইন্টারফেস এবং সচল লুপ কোড (কোনো base64 এনকোডিং ছাড়া সরাসরি ফিক্সড কোড)
 robot_html_code = """
-<div style="font-family: Arial, sans-serif; text-align: center; padding: 25px; background: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f5; max-width: 450px; margin: 20px auto;">
+<div style="font-family: Arial, sans-serif; text-align: center; padding: 25px; background: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f5; max-width: 450px; margin: auto;">
     <div id="status-display" style="font-size: 18px; color: #2c3e50; margin-bottom: 20px; font-weight: bold; padding: 15px; background: #f8f9fa; border-radius: 10px; border-left: 5px solid #3498db; transition: all 0.3s;">
         🤖 রোবট বর্তমানে বন্ধ আছে
     </div>
@@ -48,7 +48,6 @@ robot_html_code = """
     const statusDisplay = document.getElementById('status-display');
     const chatHistoryBox = document.getElementById('chat-history-box');
 
-    // ব্রাউজারের ভয়েস সার্ভিস চেক
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         speechEngine = new SpeechRecognition();
@@ -56,7 +55,6 @@ robot_html_code = """
         speechEngine.interimResults = false;
         speechEngine.lang = 'bn-BD'; 
 
-        // মাইক অন হলে যা দেখাবে
         speechEngine.onstart = function() {
             if (isSystemRunning && !isRobotTalking) {
                 statusDisplay.style.borderLeft = "5px solid #e74c3c";
@@ -66,16 +64,14 @@ robot_html_code = """
             }
         };
 
-        // কথা শোনার পর প্রসেস করা
         speechEngine.onresult = function(event) {
-            let capturedText = event.results[0][0].transcript.toLowerCase().trim();
+            let capturedText = event.results.transcript.toLowerCase().trim();
             if (capturedText.length > 0) {
                 printChatLog('আপনি', capturedText);
                 matchQuestionAndReply(capturedText);
             }
         };
 
-        // কথা বলা শেষ হলে বা কোনো সাউন্ড না পেলে বাটন ছাড়াই অটোমেটিক লুপ রিস্টার্ট হবে
         speechEngine.onerror = function() { triggerContinuousListen(); };
         speechEngine.onend = function() { triggerContinuousListen(); };
     } else {
@@ -112,7 +108,7 @@ robot_html_code = """
 
     function triggerContinuousListen() {
         if (isSystemRunning && !isRobotTalking && !window.speechSynthesis.speaking) {
-            setTimeout(() => { executeListening(); }, 400); // ৪০০ মিলি-সেকেন্ড পর স্বয়ংক্রিয় রিস্টার্ট লুপ
+            setTimeout(() => { executeListening(); }, 400);
         }
     }
 
@@ -139,7 +135,7 @@ robot_html_code = """
 
     function generateVoiceAudio(text) {
         isRobotTalking = true;
-        if (speechEngine) speechEngine.abort(); // রোবট কথা বলার সময় মাইক শতভাগ অফ থাকবে
+        if (speechEngine) speechEngine.abort(); 
         
         statusDisplay.style.borderLeft = "5px solid #2ecc71";
         statusDisplay.style.color = "#2ecc71";
@@ -148,16 +144,14 @@ robot_html_code = """
 
         const speechUtterance = new SpeechSynthesisUtterance(text);
         
-        // ভাষা ফিল্টারিং (ইংরেজি এবং খাঁটি বাংলাদেশি বাংলা উচ্চারণ নিশ্চিতকরণ)
         if(/[a-zA-Z]/.test(text)) {
             speechUtterance.lang = 'en-US';
         } else {
             speechUtterance.lang = 'bn-BD';
         }
         
-        speechUtterance.rate = 1.0; // কথার স্বাভাবিক গতি
+        speechUtterance.rate = 1.0;
 
-        // কথা বলা শেষ হওয়ামাত্রই কোনো বাটন ছাড়াই মাইক আবার চালু হবে
         speechUtterance.onend = function() {
             isRobotTalking = false;
             setTimeout(() => { triggerContinuousListen(); }, 600); 
@@ -173,9 +167,5 @@ robot_html_code = """
 </script>
 """
 
-# আইফ্রেমের সিকিউরিটি পলিসি বাইপাস করে সরাসরি রেন্ডার করার ট্রিকস
-import base64
-b64_html = base64.b64encode(robot_html_code.encode('utf-8')).decode('utf-8')
-iframe_wrapper = f'<iframe src="data:text/html;base64,{b64_html}" height="390" width="100%" style="border:none;" allow="microphone; autoplay"></iframe>'
-
-st.markdown(iframe_wrapper, unsafe_allow_html=True)
+# সরাসরি অফিশিয়াল কম্পোনেন্ট দিয়ে কোনো প্রকার এনকোডিং ছাড়া রেন্ডার করা হলো
+st.components.v1.html(robot_html_code, height=390, scrolling=False)
