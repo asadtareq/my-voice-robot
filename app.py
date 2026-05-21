@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
 import json
+import speech_recognition as sr
+from gtts import gTTS
+import io
+import base64
+import time
 
 st.set_page_config(page_title="স্মার্ট ডাইনামিক রোবট", page_icon="🤖", layout="centered")
 
@@ -11,218 +16,70 @@ st.write("---")
 # সরাসরি গুগল শিটের পাবলিক এক্সপোর্ট লিঙ্ক
 CSV_URL = "https://google.com"
 
-# গুগল শিট থেকে ডাটা রিড করা এবং জাভা-স্ক্রিপ্টের জন্য ফরম্যাট করা
+# গুগল শিট থেকে ডাটা রিড করা
 try:
     df = pd.read_csv(CSV_URL, on_bad_lines='skip')
-    
-    # কলামের সব নামকে ট্রিম এবং ছোট হাতের অক্ষরে রূপান্তর
     df.columns = df.columns.astype(str).str.strip().str.lower()
-    
-    # কলামের নাম সরাসরি ইনডেক্স দিয়ে ধরা
     questions = df.iloc[:, 0].astype(str).str.lower().str.strip()
     answers = df.iloc[:, 1].astype(str).str.strip()
-    
-    qa_dict = dict(zip(questions, answers))
-    qa_json = json.dumps(qa_dict, ensure_ascii=False)
+    qa_database = dict(zip(questions, answers))
 except Exception as e:
     st.error(f"গুগল শিট থেকে ডাটা লোড করা যাচ্ছে না! সমস্যা: {e}")
-    qa_json = "{}"
+    qa_database = {}
 
-# মূল এইচটিএমএল, সিএসএস ও জাভাস্ক্রিপ্ট কোড
-robot_ui_code = """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        .robot-card {
-            font-family: Arial, sans-serif; 
-            text-align: center; 
-            padding: 20px; 
-            background: #ffffff; 
-            border-radius: 15px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
-            border: 1px solid #eef2f5; 
-            max-width: 420px; 
-            margin: auto;
-        }
-        .status-box {
-            font-size: 17px; 
-            color: #2c3e50; 
-            margin: 20px 0; 
-            font-weight: bold; 
-            padding: 12px; 
-            background: #f8f9fa; 
-            border-radius: 10px; 
-            border-left: 5px solid #3498db;
-        }
-        .action-btn {
-            background-color: #2ecc71; 
-            color: white; 
-            padding: 15px 40px; 
-            font-size: 18px; 
-            border: none; 
-            border-radius: 50px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3); 
-            transition: all 0.3s ease;
-        }
-        .chat-display {
-            margin-top: 25px; 
-            text-align: left; 
-            background: #f1f2f6; 
-            padding: 15px; 
-            border-radius: 12px; 
-            height: 150px; 
-            overflow-y: auto; 
-            font-size: 15px; 
-            border: 1px solid #e4e7eb;
-        }
-    </style>
-</head>
-<body>
-
-<div class="robot-card">
-    <div id="status-box" class="status-box">🤖 রোবট বর্তমানে বন্ধ আছে</div>
-    <button id="action-btn" class="action-btn" onclick="toggleRobotSystem()">রোবট চালু করুন</button>
-    <div id="display-box" class="chat-display">
-        <p style="color: #7f8c8d; margin: 0;"><strong>রোবট:</strong> কথা বলা শুরু করতে উপরের সবুজ বাটনে একবার চাপুন।</p>
-    </div>
-</div>
-
-<script>
-    const qaDatabase = """ + qa_json + """;
-
-    let speechRecognitionEngine = null;
-    let isSystemActive = false;
-    let isRobotSpeakingNow = false;
+# ভয়েস প্লে করার ফাংশন
+def speak_out(text):
+    if any(c.isalpha() for c in text) and not any(0x0980 <= ord(c) <= 0x09FF for c in text):
+        lang = 'en'
+    else:
+        lang = 'bn'
+        
+    tts = gTTS(text=text, lang=lang, slow=False)
+    fp = io.BytesIO()
+    tts.write_to_fp(fp)
+    fp.seek(0)
     
-    const actionBtn = document.getElementById('action-btn');
-    const statusBox = document.getElementById('status-box');
-    const displayBox = document.getElementById('display-box');
+    audio_bytes = fp.read()
+    audio_base64 = base64.b64encode(audio_bytes).decode()
+    audio_html = f'<audio src="data:audio/mp3;base64,{audio_base64}" autoplay>'
+    st.markdown(audio_html, unsafe_allow_html=True)
 
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        speechRecognitionEngine = new SpeechRecognition();
-        speechRecognitionEngine.continuous = false; 
-        speechRecognitionEngine.interimResults = false;
-        speechRecognitionEngine.lang = 'bn-BD'; 
+# Streamlit-এর নিজস্ব অফিশিয়াল ভয়েস ইনপুট উইজেট (যা ব্রাউজার কখনো ব্লক করবে না)
+st.subheader("🎤 মাইক্রোফোনে কথা বলুন")
+audio_file = st.audio_input("কথা বলতে নিচের কালো মাইক আইকনে চাপুন")
 
-        speechRecognitionEngine.onstart = function() {
-            if (isSystemActive && !isRobotSpeakingNow) {
-                statusBox.style.borderLeft = "5px solid #e74c3c";
-                statusBox.style.color = "#e74c3c";
-                statusBox.innerText = "🎤 আমি শুনছি... আপনার প্রশ্নটি বলুন...";
-            }
-        };
-
-        speechRecognitionEngine.onresult = function(event) {
-            let userSpeechText = event.results.transcript.toLowerCase().trim();
-            if (userSpeechText.length > 0) {
-                updateChatLog('আপনি', userSpeechText);
-                findAndProcessAnswer(userSpeechText);
-            }
-        };
-
-        speechRecognitionEngine.onerror = function() { autoRestartListening(); };
-        speechRecognitionEngine.onend = function() { autoRestartListening(); };
-    } else {
-        statusBox.innerText = "🚨 ব্রাউজার ভয়েস সাপোর্ট করে না। গুগল ক্রোম ব্যবহার করুন।";
-    }
-
-    function toggleRobotSystem() {
-        if (!isSystemActive) {
-            isSystemActive = true;
-            isRobotSpeakingNow = false;
-            actionBtn.innerText = "রোবট বন্ধ করুন";
-            actionBtn.style.backgroundColor = "#e74c3c";
-            actionBtn.style.boxShadow = "0 5px 15px rgba(231, 76, 60, 0.3)";
-            safeStartListening();
-        } else {
-            isSystemActive = false;
-            isRobotSpeakingNow = false;
-            actionBtn.innerText = "রোবট চালু করুন";
-            actionBtn.style.backgroundColor = "#2ecc71";
-            actionBtn.style.boxShadow = "0 5px 15px rgba(46, 204, 113, 0.3)";
-            statusBox.style.borderLeft = "5px solid #3498db";
-            statusBox.style.color = "#2c3e50";
-            statusBox.innerText = "🤖 রোবট বর্তমানে বন্ধ আছে";
-            if(speechRecognitionEngine) speechRecognitionEngine.abort();
-            window.speechSynthesis.cancel();
-        }
-    }
-
-    function safeStartListening() {
-        if (!isSystemActive || isRobotSpeakingNow) return;
-        try { speechRecognitionEngine.start(); } catch (e) {}
-    }
-
-    function autoRestartListening() {
-        if (isSystemActive && !isRobotSpeakingNow && !window.speechSynthesis.speaking) {
-            setTimeout(() => { safeStartListening(); }, 400);
-        }
-    }
-
-    function updateChatLog(sender, text) {
-        displayBox.innerHTML += `<p style='margin: 5px 0;'><strong>` + sender + `:</strong> ` + text + `</p>`;
-        displayBox.scrollTop = displayBox.scrollHeight;
-    }
-
-    function findAndProcessAnswer(question) {
-        let cleanQuestion = question.replace(/[?.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
-        let foundAnswer = "দুঃখিত, এই প্রশ্নের উত্তর আমার গুগল শিটে সেট করা নেই।";
-
-        for (let key in qaDatabase) {
-            if (cleanQuestion.includes(key) || key.includes(cleanQuestion)) {
-                foundAnswer = qaDatabase[key];
-                break;
-            }
-        }
-
-        updateChatLog('রোবট', foundAnswer);
-        triggerVoiceOutput(foundAnswer);
-    }
-
-    function triggerVoiceOutput(text) {
-        isRobotSpeakingNow = true;
-        if (speechRecognitionEngine) speechRecognitionEngine.abort(); 
+if audio_file is not None:
+    # অডিও প্রসেস করা
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(audio_file) as source:
+        audio_data = recognizer.record(source)
+    
+    user_text = ""
+    try:
+        # প্রথমে বাংলা ডিক্টেশন ট্রাই করবে
+        user_text = recognizer.recognize_google(audio_data, language="bn-BD").lower().strip()
+    except:
+        try:
+            # বাংলা না হলে ইংরেজি ট্রাই করবে
+            user_text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
+        except:
+            st.error("দুঃখিত, কথাটি স্পষ্ট বোঝা যায়নি।")
+            
+    if user_text:
+        st.success(f"**আপনি বলেছেন:** {user_text}")
         
-        statusBox.style.borderLeft = "5px solid #2ecc71";
-        statusBox.style.color = "#2ecc71";
-        statusBox.innerText = "📢 রোবট মুখে উত্তর দিচ্ছে...";
-
-        const speechUtterance = new SpeechSynthesisUtterance(text);
+        # শিটের ডাটার সাথে মেলানো
+        answer = "দুঃখিত, এই প্রশ্নের উত্তর আমার গুগল শিটে সেট করা নেই।"
+        for key in qa_database:
+            if key in user_text or user_text in key:
+                answer = qa_database[key]
+                break
+                
+        st.warning(f"**রোবট:** {answer}")
         
-        if(/[a-zA-Z]/.test(text)) {
-            speechUtterance.lang = 'en-US';
-        } else {
-            speechUtterance.lang = 'bn-BD';
-        }
+        # উত্তর মুখে বলা
+        speak_out(answer)
         
-        speechUtterance.rate = 1.0;
-
-        speechUtterance.onend = function() {
-            isRobotSpeakingNow = false;
-            setTimeout(() => { autoRestartListening(); }, 1000); 
-        };
-
-        speechUtterance.onerror = function() {
-            isRobotSpeakingNow = false;
-            autoRestartListening();
-        };
-
-        window.speechSynthesis.speak(speechUtterance);
-    }
-</script>
-</body>
-</html>
-"""
-
-# ডাটা ইউআরআই (Data URI) মেকানিজম ব্যবহার করে মাইক্রোফোন পারমিশন বাইপাস করা হলো
-import base64
-b64_code = base64.b64encode(robot_ui_code.encode('utf-8')).decode('utf-8')
-iframe_html = f'<iframe src="data:text/html;base64,{b64_code}" height="350" width="100%" style="border:none;" allow="microphone"></iframe>'
-
-# স্ক্রিনে রেন্ডার করা
-st.markdown(iframe_html, unsafe_allow_html=True)
+        # কথা বলা শেষ করে ১.৫ সেকেন্ড পর স্বয়ংক্রিয়ভাবে অ্যাপ রিস্টার্ট হয়ে আবার শুনবে
+        time.sleep(1.5)
+        st.rerun()
