@@ -30,6 +30,7 @@ custom_robot_html = """
         "কেমন আছো": "আমি খুব ভালো আছি, ধন্যবাদ! আপনি কেমন আছেন?",
         "তুমি কি করতে পারো": "আমি আপনার কথা শুনে সরাসরি মুখে উত্তর দিতে পারি।",
         "ধন্যবাদ": "আপনাকেও অনেক অনেক ধন্যবাদ!",
+        দিনাজপুর কি": "দিনাজপুর একটি জেলার নাম",
         "hello": "Hello! How can I help you?",
         "what is your name": "My name is Talking Robot.",
         "how are you": "I am doing great, thank you!",
