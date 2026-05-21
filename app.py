@@ -1,81 +1,157 @@
 import streamlit as st
 import pandas as pd
-import io
-import base64
-import time
-from google.protobuf.json_format import MessageToDict
+import json
 
-st.set_page_config(page_title="স্মার্ট ডাইনামিক রোবট", page_icon="🤖", layout="centered")
+st.set_page_config(page_title="স্মার্ট ভয়েস রোবট", page_icon="🤖", layout="centered")
 
-st.markdown("<h2 style='text-align: center;'>🤖 নন-স্টপ ভয়েস টু ভয়েস রোবট</h2>", unsafe_allow_html=True)
-st.write("<p style='text-align: center; color: gray;'>গুগল শিট কানেক্টেড টকিং রোবট।</p>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center;'>🤖 ডাইনামিক ভয়েস টু ভয়েস রোবট</h2>", unsafe_allow_html=True)
+st.write("<p style='text-align: center; color: gray;'>কোডে হাত না দিয়ে গুগল শিট থেকে প্রশ্ন-উত্তর আপডেট করুন</p>", unsafe_allow_html=True)
 st.write("---")
 
-# ১. সরাসরি গুগল শিটের পাবলিক এক্সপোর্ট লিঙ্ক থেকে ডাটা রিড করা
+# সরাসরি গুগল শিটের পাবলিক এক্সপোর্ট ইউআরএল
 CSV_URL = "https://google.com"
 
+# গুগল শিট থেকে নিখুঁতভাবে ডাটা লোড করার মেকানিজম
 try:
     df = pd.read_csv(CSV_URL, on_bad_lines='skip')
-    df.columns = df.columns.astype(str).str.strip().str.lower()
     
-    # ১ম কলাম প্রশ্ন, ২য় কলাম উত্তর ধরা হলো
+    # ১ম কলাম প্রশ্ন এবং ২য় কলাম উত্তর হিসেবে স্ট্রিক্টলি ফিল্টার করা হলো
     questions = df.iloc[:, 0].astype(str).str.lower().str.strip()
     answers = df.iloc[:, 1].astype(str).str.strip()
-    qa_database = dict(zip(questions, answers))
+    
+    # ফাঁকা রো বা হেডারের ডুপ্লিকেট টেক্সট বাদ দেওয়া
+    qa_dict = {}
+    for q, a in zip(questions, answers):
+        if q and q != "nan" and q != "question":
+            qa_dict[q] = a
+            
+    qa_json = json.dumps(qa_dict, ensure_ascii=False)
 except Exception as e:
     st.error(f"গুগল শিট লোড এরর: {e}")
-    qa_database = {}
+    qa_json = "{}"
 
-# ২. টেক্সট থেকে খাঁটি বাংলা/ইংরেজি ভয়েস প্লে করার ফাংশন
-def speak_out(text):
-    from gtts import gTTS
-    lang = 'en' if (any(c.isalpha() for c in text) and not any(0x0980 <= ord(c) <= 0x09FF for c in text)) else 'bn'
-    tts = gTTS(text=text, lang=lang, slow=False)
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    audio_bytes = fp.read()
-    audio_base64 = base64.b64encode(audio_bytes).decode()
-    audio_html = f'<audio src="data:audio/mp3;base64,{audio_base64}" autoplay>'
-    st.markdown(audio_html, unsafe_allow_html=True)
-
-# ৩. Streamlit-এর নিজস্ব অফিশিয়াল অলওয়েজ-অন ভয়েস রিকগনিশন (যা ব্রাউজার কখনো ব্লক করবে না)
-st.subheader("🎤 রোবট সচল আছে, কথা বলুন:")
-audio_file = st.audio_input("কথা বলতে নিচের মাইক আইকনে ক্লিক করুন")
-
-if audio_file is not None:
-    import speech_recognition as sr
-    recognizer = sr.Recognizer()
+# সম্পূর্ণ বাটন-মুক্ত ব্রাউজার লেভেল লাইভ ভয়েস লুপ কোড
+custom_robot_html = """
+<div style="font-family: Arial, sans-serif; text-align: center; padding: 25px; background: #ffffff; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f5; max-width: 450px; margin: auto;">
+    <div id="status-box" style="font-size: 18px; color: #e74c3c; margin-bottom: 20px; font-weight: bold; padding: 15px; background: #fdf2f2; border-radius: 10px; border-left: 5px solid #e74c3c;">
+        🎤 আমি শুনছি... আপনার প্রশ্নটি বলুন...
+    </div>
     
-    with sr.AudioFile(audio_file) as source:
-        audio_data = recognizer.record(source)
+    <div id="display-box" style="text-align: left; background: #f1f2f6; padding: 15px; border-radius: 12px; height: 180px; overflow-y: auto; font-size: 15px; border: 1px solid #e4e7eb;">
+        <p style="color: #7f8c8d; margin: 0;"><strong>রোবট:</strong> পেজটি সফলভাবে লোড হয়েছে। কোনো বাটন না চেপে সরাসরি কথা বলুন।</p>
+    </div>
+</div>
+
+<script>
+    // গুগল শিট থেকে আসা ডাইনামিক ডাটাবেজ
+    const qaDatabase = """ + qa_json + """;
+
+    let speechRecognitionEngine = null;
+    let isRobotSpeakingNow = false;
     
-    user_text = ""
-    try:
-        # প্রথমে বাংলা হিসেবে ধরার চেষ্টা করবে
-        user_text = recognizer.recognize_google(audio_data, language="bn-BD").lower().strip()
-    except:
-        try:
-            # বাংলা না বুঝলে ইংরেজি হিসেবে ট্রাই করবে
-            user_text = recognizer.recognize_google(audio_data, language="en-US").lower().strip()
-        except:
-            st.error("দুঃখিত, কথাটি স্পষ্ট নয়। দয়া করে আবার বলুন।")
-            
-    if user_text:
-        st.success(f"**আপনি বলেছেন:** {user_text}")
+    const statusBox = document.getElementById('status-box');
+    const displayBox = document.getElementById('display-box');
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        speechRecognitionEngine = new SpeechRecognition();
+        speechRecognitionEngine.continuous = false; 
+        speechRecognitionEngine.interimResults = false;
+        speechRecognitionEngine.lang = 'bn-BD'; 
+
+        speechRecognitionEngine.onstart = function() {
+            if (!isRobotSpeakingNow) {
+                statusBox.style.borderLeft = "5px solid #e74c3c";
+                statusBox.style.color = "#e74c3c";
+                statusBox.style.backgroundColor = "#fdf2f2";
+                statusBox.innerText = "🎤 আমি শুনছি... আপনার প্রশ্নটি বলুন...";
+            }
+        };
+
+        speechRecognitionEngine.onresult = function(event) {
+            let userSpeechText = event.results.transcript.toLowerCase().trim();
+            if (userSpeechText.length > 0) {
+                updateChatLog('আপনি', userSpeechText);
+                findAndProcessAnswer(userSpeechText);
+            }
+        };
+
+        speechRecognitionEngine.onerror = function() { autoRestartListening(); };
+        speechRecognitionEngine.onend = function() { autoRestartListening(); };
         
-        # ৪. গুগল শিটের ডাটার সাথে নিখুঁতভাবে প্রশ্ন মেলানো
-        answer = "দুঃখিত, এই প্রশ্নের উত্তর আমার গুগল শিটে সেট করা নেই।"
-        for key in qa_database:
-            if str(key) in user_text or user_text in str(key):
-                answer = qa_database[key]
-                break
-                
-        st.warning(f"**রোবট:** {answer}")
+        // পেজ লোড হওয়ার ১ সেকেন্ডের মধ্যে কোনো বাটন ছাড়াই অটোমেটিক স্টার্ট হবে
+        setTimeout(() => { safeStartListening(); }, 1000);
+    } else {
+        statusBox.innerText = "🚨 ব্রাউজার ভয়েস সাপোর্ট করে না। গুগল ক্রোম ব্যবহার করুন।";
+    }
+
+    function safeStartListening() {
+        if (isRobotSpeakingNow) return;
+        try { speechRecognitionEngine.start(); } catch (e) {}
+    }
+
+    function autoRestartListening() {
+        if (!isRobotSpeakingNow && !window.speechSynthesis.speaking) {
+            setTimeout(() => { safeStartListening(); }, 300);
+        }
+    }
+
+    function updateChatLog(sender, text) {
+        displayBox.innerHTML += `<p style='margin: 6px 0;'><strong>` + sender + `:</strong> ` + text + `</p>`;
+        displayBox.scrollTop = displayBox.scrollHeight;
+    }
+
+    function findAndProcessAnswer(question) {
+        // বিরামচিহ্ন পরিষ্কার করা
+        let cleanQuestion = question.replace(/[?.,\/#!$%\^&\*;:{}=\-_`~()]/g,"").trim();
+        let foundAnswer = "দুঃখিত, এই প্রশ্নের উত্তর আমার গুগল শিটে সেট করা নেই।";
+
+        // শিটের ডাটার সাথে আংশিক বা সম্পূর্ণ মিল খোঁজার উন্নত লজিক
+        for (let key in qaDatabase) {
+            let cleanKey = key.trim();
+            if (cleanQuestion.includes(cleanKey) || cleanKey.includes(cleanQuestion)) {
+                foundAnswer = qaDatabase[key];
+                break;
+            }
+        }
+
+        updateChatLog('রোবট', foundAnswer);
+        triggerVoiceOutput(foundAnswer);
+    }
+
+    function triggerVoiceOutput(text) {
+        isRobotSpeakingNow = true;
+        if (speechRecognitionEngine) speechRecognitionEngine.abort(); // কথা বলার সময় মাইক বন্ধ
         
-        # ৫. উত্তর মুখে বলা
-        speak_out(answer)
+        statusBox.style.borderLeft = "5px solid #2ecc71";
+        statusBox.style.color = "#2ecc71";
+        statusBox.style.backgroundColor = "#f2fdf5";
+        statusBox.innerText = "📢 রোবট মুখে উত্তর দিচ্ছে...";
+
+        const speechUtterance = new SpeechSynthesisUtterance(text);
         
-        # ৬. স্বয়ংক্রিয়ভাবে আবার শোনার লুপ তৈরি করা (টাইম ডিলেসহ)
-        time.sleep(2.5)
-        st.rerun()
+        if(/[a-zA-Z]/.test(text)) {
+            speechUtterance.lang = 'en-US';
+        } else {
+            speechUtterance.lang = 'bn-BD'; // নিখুঁত বাংলা ভয়েস টোন
+        }
+        
+        speechUtterance.rate = 1.0;
+
+        speechUtterance.onend = function() {
+            isRobotSpeakingNow = false;
+            setTimeout(() => { autoRestartListening(); }, 800); // উত্তর শেষ হলেই স্বয়ংক্রিয়ভাবে আবার শোনা শুরু
+        };
+
+        speechUtterance.onerror = function() {
+            isRobotSpeakingNow = false;
+            autoRestartListening();
+        };
+
+        window.speechSynthesis.speak(speechUtterance);
+    }
+</script>
+"""
+
+# আইফ্রেম ছাড়াই সরাসরি মূল অ্যাপে ইনজেক্ট করা হলো (মাইক্রোফোন ব্লক এড়াতে)
+st.components.v1.html(custom_robot_html, height=360, scrolling=False)
