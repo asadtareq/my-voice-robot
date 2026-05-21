@@ -4,10 +4,11 @@ import speech_recognition as sr
 from gtts import gTTS
 import io
 import base64
+import time
 
-st.set_page_config(page_title="ভয়েস রোবট", page_icon="🤖", layout="centered")
+st.set_page_config(page_title="অটো-লুপ ভয়েস রোবট", page_icon="🤖", layout="centered")
 
-st.markdown("<h2 style='text-align: center;'>🤖 ভয়েস টু ভয়েস টকিং রোবট</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center;'>🤖 অটো-লুপ ভয়েস টু ভয়েস রোবট</h2>", unsafe_allow_html=True)
 st.write("---")
 
 # প্রশ্ন ও উত্তরের ডাটাবেজ
@@ -22,9 +23,20 @@ qa_database = {
     "how are you": "I am doing great, thank you!"
 }
 
-# টেক্সট থেকে ভয়েস তৈরি ও অটো-প্লে করার ফাংশন
+# সেশন স্টেট ইনিশিয়াল করা (অটো-লুপের জন্য)
+if 'bot_speaking' not in st.session_state:
+    st.session_state.bot_speaking = False
+
+# সম্পূর্ণ খাঁটি বাংলা ও ইংরেজি ভয়েস ফাংশন
 def speak_out(text):
-    lang = 'en' if any(c.isalpha() for c in text) else 'bn'
+    st.session_state.bot_speaking = True
+    
+    # লেখাটিতে ইংরেজি বর্ণমালা থাকলে ইংরেজি ভয়েস, নতুবা নিখুঁত বাংলা ভয়েস
+    if any(c.isalpha() for c in text) and not any(0x0980 <= ord(c) <= 0x09FF for c in text):
+        lang = 'en'
+    else:
+        lang = 'bn' # খাঁটি বাংলা উচ্চারণ নিশ্চিত করা হলো
+        
     tts = gTTS(text=text, lang=lang, slow=False)
     
     fp = io.BytesIO()
@@ -33,22 +45,27 @@ def speak_out(text):
     
     audio_bytes = fp.read()
     audio_base64 = base64.b64encode(audio_bytes).decode()
+    
+    # অটো-প্লে অডিও ট্যাগ
     audio_html = f'<audio src="data:audio/mp3;base64,{audio_base64}" autoplay>'
     st.markdown(audio_html, unsafe_allow_html=True)
+    
+    # রোবটের কথা বলার সময় ১ সেকেন্ড অপেক্ষা
+    time.sleep(1.5)
+    st.session_state.bot_speaking = False
 
 st.subheader("🎤 রোবটের সাথে কথা বলুন")
-st.info("নিচের বাটনে ক্লিক করে কথা বলা শুরু করুন এবং কথা শেষ হলে আবার চাপুন।")
+st.info("একবার নিচের বাটনে ক্লিক করে কথা বলুন। উত্তর দেওয়ার পর এটি স্বয়ংক্রিয়ভাবে আবার আপনার কথা শুনবে।")
 
-# মাইক্রোফোন রেকর্ডার উইজেট (এখানে format='wav' এবং sample_rate নিশ্চিত করা হয়েছে)
+# মাইক্রোফোন রেকর্ডার উইজেট
 audio = mic_recorder(
-    start_prompt="🔴 রেকর্ড শুরু করুন",
-    stop_prompt="🟢 রেকর্ড শেষ করুন",
-    format="wav",  # এই লাইনটি এরর দূর করবে
+    start_prompt="🔴 রোবট চালু করুন (একবার চাপুন)",
+    stop_prompt="🟢 কথা শেষ করুন",
+    format="wav",
     key='recorder'
 )
 
-if audio:
-    # রেকর্ড করা WAV অডিও ডেটা প্রসেস করা
+if audio and not st.session_state.bot_speaking:
     audio_bio = io.BytesIO(audio['bytes'])
     recognizer = sr.Recognizer()
     
@@ -56,7 +73,7 @@ if audio:
         audio_data = recognizer.record(source)
     
     try:
-        # অডিও থেকে টেক্সট কনভার্ট করা (প্রথমে বাংলা, ব্যর্থ হলে ইংরেজি ট্রাই করবে)
+        # গুগল স্পীচ দিয়ে ভয়েস টু টেক্সট
         try:
             user_text = recognizer.recognize_google(audio_data, language="bn-BD").lower().strip()
         except:
@@ -64,7 +81,7 @@ if audio:
             
         st.success(f"**আপনি বলেছেন:** {user_text}")
         
-        # ডাটাবেজ থেকে উত্তর খোঁজা
+        # ডাটাবেজ থেকে উত্তর মেলানো
         answer = "দুঃখিত, এই প্রশ্নের উত্তর আমার কোডে সেট করা নেই।"
         for key in qa_database:
             if key in user_text:
@@ -73,10 +90,21 @@ if audio:
                 
         st.warning(f"**রোবট:** {answer}")
         
-        # রোবটের উত্তর প্লে করা
+        # উত্তরটি মুখে বলা
         speak_out(answer)
         
+        # বাটন বারবার না চেপে স্বয়ংক্রিয়ভাবে রিফ্রেশ হয়ে মাইক অন করার জাভাস্ক্রিপ্ট ট্রিকস
+        st.markdown("""
+            <script>
+                setTimeout(function(){
+                    window.parent.document.querySelector('.stButton button').click();
+                }, 1000);
+            </script>
+        """, unsafe_allow_html=True)
+        
     except sr.UnknownValueError:
-        st.error("দুঃখিত, আপনার কথাটি স্পষ্ট বোঝা যায়নি। অনুগ্রহ করে মাইক্রোফোনের কাছে এসে আবার স্পষ্ট করে চেষ্টা করুন।")
+        st.error("কথাটি স্পষ্ট নয়। ১ সেকেন্ড পর রোবট আবার আপনার কথা শুনবে...")
+        time.sleep(1)
+        st.rerun()
     except sr.RequestError:
-        st.error("সার্ভার সমস্যা। অনুগ্রহ করে ইন্টারনেট কানেকশন চেক করুন।")
+        st.error("সার্ভার সমস্যা।")
