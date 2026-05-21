@@ -169,5 +169,5 @@ custom_robot_html = """
     }
 </script>
 """
+components.html(custom_robot_html, height=350, scrolling=False, allow_output_interaction=True)
 
-components.html(custom_robot_html, height=350)
